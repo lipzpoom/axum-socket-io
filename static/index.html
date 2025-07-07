@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Axum Socket.IO Chat</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+      }
+
+      .container {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        max-width: 800px;
+        height: 600px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        text-align: center;
+      }
+
+      .header h1 {
+        margin-bottom: 10px;
+        font-size: 1.8em;
+      }
+
+      .connection-status {
+        background: rgba(255, 255, 255, 0.2);
+        padding: 8px 16px;
+        border-radius: 20px;
+        display: inline-block;
+        font-size: 0.9em;
+      }
+
+      .main-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 20px;
+      }
+
+      .room-section {
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 10px;
+        border-left: 4px solid #667eea;
+      }
+
+      .room-controls {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .room-controls input {
+        flex: 1;
+        padding: 10px;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+
+      .room-controls input:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+
+      .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+      }
+
+      .btn-primary {
+        background: #667eea;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #5a67d8;
+        transform: translateY(-2px);
+      }
+
+      .btn-secondary {
+        background: #6c757d;
+        color: white;
+      }
+
+      .btn-secondary:hover {
+        background: #5a6268;
+      }
+
+      .current-room {
+        font-size: 0.9em;
+        color: #6c757d;
+        margin-top: 5px;
+      }
+
+      .messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        max-height: 300px;
+      }
+
+      .message {
+        margin-bottom: 10px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        animation: fadeIn 0.3s ease;
+      }
+
+      .message.system {
+        background: #e3f2fd;
+        color: #1976d2;
+        font-style: italic;
+      }
+
+      .message.user {
+        background: #e8f5e8;
+        color: #2e7d32;
+      }
+
+      .message.other {
+        background: #fff3e0;
+        color: #f57c00;
+      }
+
+      .message .username {
+        font-weight: bold;
+        margin-right: 8px;
+      }
+
+      .message .timestamp {
+        font-size: 0.8em;
+        color: #6c757d;
+        float: right;
+      }
+
+      .message-input {
+        display: flex;
+        gap: 10px;
+      }
+
+      .message-input input {
+        flex: 1;
+        padding: 12px;
+        border: 2px solid #e9ecef;
+        border-radius: 25px;
+        font-size: 14px;
+      }
+
+      .message-input input:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+
+      .send-btn {
+        padding: 12px 24px;
+        background: #667eea;
+        color: white;
+        border: none;
+        border-radius: 25px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.3s ease;
+      }
+
+      .send-btn:hover {
+        background: #5a67d8;
+        transform: scale(1.05);
+      }
+
+      .send-btn:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .status-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+      }
+
+      .status-connected {
+        background: #28a745;
+        animation: pulse 2s infinite;
+      }
+
+      .status-disconnected {
+        background: #dc3545;
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🚀 Axum Socket.IO Chat</h1>
+        <div class="connection-status">
+          <span class="status-indicator" id="statusIndicator"></span>
+          <span id="connectionStatus">กำลังเชื่อมต่อ...</span>
+        </div>
+      </div>
+
+      <div class="main-content">
+        <div class="room-section">
+          <div class="room-controls">
+            <input type="text" id="usernameInput" placeholder="ชื่อของคุณ..." />
+            <input type="text" id="roomInput" placeholder="ชื่อห้องแชท..." />
+            <button class="btn btn-primary" id="joinRoomBtn">เข้าร่วมห้อง</button>
+            <button class="btn btn-secondary" id="leaveRoomBtn">ออกจากห้อง</button>
+          </div>
+          <div class="current-room" id="currentRoom">ยังไม่ได้เข้าร่วมห้องใดๆ</div>
+        </div>
+
+        <div class="messages" id="messages"></div>
+
+        <div class="message-input">
+          <input type="text" id="messageInput" placeholder="พิมพ์ข้อความที่นี่..." disabled />
+          <button class="send-btn" id="sendBtn" disabled>ส่ง</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const socket = io();
+
+      // DOM elements
+      const statusIndicator = document.getElementById("statusIndicator");
+      const connectionStatus = document.getElementById("connectionStatus");
+      const usernameInput = document.getElementById("usernameInput");
+      const roomInput = document.getElementById("roomInput");
+      const joinRoomBtn = document.getElementById("joinRoomBtn");
+      const leaveRoomBtn = document.getElementById("leaveRoomBtn");
+      const currentRoomDiv = document.getElementById("currentRoom");
+      const messagesDiv = document.getElementById("messages");
+      const messageInput = document.getElementById("messageInput");
+      const sendBtn = document.getElementById("sendBtn");
+
+      // State
+      let currentRoom = null;
+      let username = null;
+      let isConnected = false;
+
+      // Connection events
+      socket.on("connect", () => {
+        console.log("Connected to server");
+        isConnected = true;
+        updateConnectionStatus("เชื่อมต่อแล้ว", true);
+      });
+
+      socket.on("disconnect", () => {
+        console.log("Disconnected from server");
+        isConnected = false;
+        updateConnectionStatus("ขาดการเชื่อมต่อ", false);
+        messageInput.disabled = true;
+        sendBtn.disabled = true;
+      });
+
+      socket.on("welcome", (data) => {
+        console.log("Welcome message:", data);
+        addMessage("ระบบ", data.message, "system");
+      });
+
+      // Room events
+      socket.on("room_joined", (data) => {
+        console.log("Room joined:", data);
+        currentRoom = data.room;
+        updateCurrentRoom();
+        addMessage("ระบบ", `เข้าร่วมห้อง "${data.room}" เรียบร้อยแล้ว`, "system");
+        enableChat();
+      });
+
+      socket.on("user_joined", (data) => {
+        console.log("User joined:", data);
+        addMessage("ระบบ", `${data.username} เข้าร่วมห้อง`, "system");
+      });
+
+      socket.on("user_left", (data) => {
+        console.log("User left:", data);
+        addMessage("ระบบ", `${data.username} ออกจากห้อง`, "system");
+      });
+
+      // Message events
+      socket.on("new_message", (data) => {
+        console.log("New message:", data);
+        const messageClass = data.username === username ? "user" : "other";
+        addMessage(data.username, data.content, messageClass, data.timestamp);
+      });
+
+      // UI functions
+      function updateConnectionStatus(status, connected) {
+        connectionStatus.textContent = status;
+        statusIndicator.className = `status-indicator ${connected ? "status-connected" : "status-disconnected"}`;
+      }
+
+      function updateCurrentRoom() {
+        if (currentRoom) {
+          currentRoomDiv.textContent = `ห้องปัจจุบัน: ${currentRoom}`;
+        } else {
+          currentRoomDiv.textContent = "ยังไม่ได้เข้าร่วมห้องใดๆ";
+        }
+      }
+
+      function addMessage(user, content, type, timestamp) {
+        const messageDiv = document.createElement("div");
+        messageDiv.className = `message ${type}`;
+
+        const timeStr = timestamp
+          ? new Date(timestamp * 1000).toLocaleTimeString("th-TH")
+          : new Date().toLocaleTimeString("th-TH");
+
+        messageDiv.innerHTML = `
+                <span class="username">${user}:</span>
+                <span>${content}</span>
+                <span class="timestamp">${timeStr}</span>
+            `;
+
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      }
+
+      function enableChat() {
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+        messageInput.focus();
+      }
+
+      function disableChat() {
+        messageInput.disabled = true;
+        sendBtn.disabled = true;
+      }
+
+      // Event listeners
+      joinRoomBtn.addEventListener("click", () => {
+        const usernameValue = usernameInput.value.trim();
+        const roomValue = roomInput.value.trim();
+
+        if (!usernameValue || !roomValue) {
+          alert("กรุณากรอกชื่อผู้ใช้และชื่อห้อง");
+          return;
+        }
+
+        username = usernameValue;
+        socket.emit("join_room", {
+          username: usernameValue,
+          room: roomValue,
+        });
+      });
+
+      leaveRoomBtn.addEventListener("click", () => {
+        if (currentRoom) {
+          socket.emit("leave_room");
+          currentRoom = null;
+          updateCurrentRoom();
+          disableChat();
+          addMessage("ระบบ", "ออกจากห้องแล้ว", "system");
+        }
+      });
+
+      sendBtn.addEventListener("click", sendMessage);
+
+      messageInput.addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          sendMessage();
+        }
+      });
+
+      function sendMessage() {
+        const message = messageInput.value.trim();
+        if (!message) return;
+
+        socket.emit("send_message", {
+          content: message,
+          room: currentRoom,
+        });
+
+        messageInput.value = "";
+      }
+
+      // Initialize
+      updateConnectionStatus("กำลังเชื่อมต่อ...", false);
+      updateCurrentRoom();
+    </script>
+  </body>
+</html>
